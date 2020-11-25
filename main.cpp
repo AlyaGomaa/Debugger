@@ -3,6 +3,7 @@
 
 using namespace std;
 #include <string>
+typedef int(__stdcall *printf_ex)(const char*, ...);
 int main(int argc, char *argv[])
 {
 
@@ -11,12 +12,11 @@ int main(int argc, char *argv[])
 
         int pid = stoi(argv[1]);
         dbg.attach(pid); // calss get regs
-
-        FARPROC printf_address = dbg.resolve_function("msvcrt.dll", "printf");
-        printf("[*] Address of printf: 0x%08x" , printf_address);
-
+        int x;
+        printf_ex printf_address =(printf_ex) dbg.resolve_function("msvcrt.dll", "printf");
+        printf_address("HelloWorld from here\n");
+        printf("[*] Address of printf: 0x%08x\n" , printf_address);
         dbg.bp_set((LPVOID)printf_address);
-
         dbg.run();
 
     } else {

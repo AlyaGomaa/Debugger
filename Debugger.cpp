@@ -121,6 +121,7 @@ void Debugger::get_debug_event()
 
             if (exception == EXCEPTION_ACCESS_VIOLATION)
             {
+                
                 cout << "Access Violation Detected." << endl;
                 // If a breakpoint is detected, we call an internal handler.
                 // han handle hena a bp if one occured
@@ -289,6 +290,7 @@ std::string Debugger::read_process_memory(LPCVOID address, SIZE_T length)
     //DWORD NumberOfBytesRead;
     if (ReadProcessMemory(h_process, address, &bytes_read, length, NULL))
     {
+        
         std::string Bytes_read(bytes_read);
         return Bytes_read ;
         
@@ -314,10 +316,11 @@ bool Debugger::bp_set(LPVOID address)
     std::map<int, int>::iterator it =  breakpoints.find((int) address);
     
     if ( it == breakpoints.end() ){ // breakpoint isn't registered
+    printf("Breakpoint added @0x%x",address);
        try{
         std::string original_byte = read_process_memory(address, 1); // store the original byte
         write_process_memory(address, "\xcc");                  // write the INT3 opcode
-        breakpoints[(int)address] = stoi(original_byte);        //register the breakpoint in our internal list
+        breakpoints[(int)address] = (int)original_byte[0];        //register the breakpoint in our internal list
        } catch (...){
            cout << "something went wrong while setting the bp, Error code: " << GetLastError()  << endl;
            return false;
