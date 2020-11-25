@@ -236,7 +236,7 @@ _CONTEXT Debugger::get_thread_context(HANDLE h_thread)
     return context;
 }
 
-Debugger::get_regs()
+void Debugger::get_regs()
 {
 
     int *thread_list = enumerate_threads();
@@ -325,14 +325,14 @@ bool Debugger::bp_set(LPVOID address)
     }
     return true;
 }
-int Debugger::resolve_function(LPCSTR dll, LPCSTR function)
+FARPROC Debugger::resolve_function(LPCSTR dll, LPCSTR function)
 {
 
     HMODULE module_handle = GetModuleHandleA(dll);
-    int address = GetProcAddress(module_handle, function );
+    FARPROC address = GetProcAddress(module_handle, function );
     CloseHandle(module_handle);
 
-    if ( (handle && address) ){
+    if ( (module_handle && address) ){
         return address;
     }
     else {

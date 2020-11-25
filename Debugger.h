@@ -28,14 +28,14 @@ public:
     HANDLE open_thread(DWORD TID);
     _CONTEXT get_thread_context(HANDLE h_thread);
 
-    get_regs();
+    void get_regs();
 
     std::string read_process_memory(LPCVOID address, SIZE_T length);
 
 
     bool write_process_memory(LPVOID address, LPCVOID data);
     bool bp_set(LPVOID address);
-    int resolve_function(std::string dll, LPCSTR function);
+    FARPROC resolve_function(LPCSTR dll, LPCSTR function);
 
 };
 

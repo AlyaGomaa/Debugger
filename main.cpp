@@ -12,7 +12,7 @@ int main(int argc, char *argv[])
         int pid = stoi(argv[1]);
         dbg.attach(pid); // calss get regs
 
-        int printf_address = dbg.resolve_function("msvcrt.dll", "printf");
+        FARPROC printf_address = dbg.resolve_function("msvcrt.dll", "printf");
         printf("[*] Address of printf: 0x%08x" , printf_address);
 
         dbg.bp_set((LPVOID)printf_address);
