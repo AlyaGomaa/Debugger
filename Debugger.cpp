@@ -5,28 +5,34 @@
 
 using namespace std;
 #include <string>
-// i686-w64-mingw32-g++ main.cpp Debugger.cpp -m32 -o ../DBG.exe
+#define HW_ACCESS 0x00000003
+#define HW_EXECUTE 0x00000000
+#define HW_WRITE 0x00000001
+
+// # Hardware breakpoint conditions
+// HW_ACCESS                      = 0x00000003
+// HW_EXECUTE                     = 0x00000000
+// HW_WRITE                       = 0x00000001
 static int pid;
 static HANDLE h_thread;
 static bool debugger_active;
 static HANDLE h_process;
 static _CONTEXT context;
-static DWORD exception;
+static DWORD currentException;
 static PVOID exception_address;
 static std::map<int, int> breakpoints; //hardcoded that value for now
 
-    /*void Debugger::print_array(int arr[]){
-    cout << "Now Printing Array: " << endl;  
-    for (int i=0;i < sizeof(arr) ;i++){
-        cout << arr[i] << endl;
+
+
+
+Debugger::Debugger(){
+    for(int i=0;i<4;i++){
+        this->hardwareBreakpoints[i]=NULL;
     }
-    
+}
 
-    cout << "--------" << endl;
-}*/
 
-    HANDLE
-    Debugger::open_process(int PID)
+HANDLE  Debugger::open_process(int PID)
 {
     return OpenProcess(PROCESS_ALL_ACCESS, false, PID);
 }
@@ -63,6 +69,7 @@ void Debugger::load(char *path_to_exe)
         cout << "Can't Create the process.. Error: " << GetLastError() << endl;
     }
 }
+
 
 void Debugger::attach(int PID)
 {
@@ -116,25 +123,24 @@ void Debugger::get_debug_event()
         { // 0x1 ==  EXCEPTION_DEBUG_EVENT law el event ely 7sal kan lo 3laqa bel debugger
 
             //Obtain the exception code
-            DWORD exception = debug_event.u.Exception.ExceptionRecord.ExceptionCode; // access violation , bp , index outta range etc.
-            PVOID exception_address = debug_event.u.Exception.ExceptionRecord.ExceptionAddress;
-
-            if (exception == EXCEPTION_ACCESS_VIOLATION)
+            currentException = debug_event.u.Exception.ExceptionRecord.ExceptionCode; // access violation , bp , index outta range etc.
+            exception_address = debug_event.u.Exception.ExceptionRecord.ExceptionAddress;
+            if (currentException == EXCEPTION_ACCESS_VIOLATION)
             {
                 
                 cout << "Access Violation Detected." << endl;
                 // If a breakpoint is detected, we call an internal handler.
                 // han handle hena a bp if one occured
             }
-            else if (exception == EXCEPTION_BREAKPOINT) // software breakpoints
+            else if (currentException == EXCEPTION_BREAKPOINT) // software breakpoints
             {
                 DWORD continue_status = handle_breakpoint();
             }
-            else if (exception == EXCEPTION_GUARD_PAGE) //  memory breakpoints
+            else if (currentException == EXCEPTION_GUARD_PAGE) //  memory breakpoints
             { 
                 cout << "Guard Page Access Detected." << endl;
             }
-            else if (exception == EXCEPTION_SINGLE_STEP) // hardware breakpoint
+            else if (currentException == EXCEPTION_SINGLE_STEP) // hardware breakpoint
             {
                 cout << "Single Stepping." << endl;
             }
@@ -152,7 +158,7 @@ void Debugger::get_debug_event()
 DWORD Debugger::handle_breakpoint()
 { // and return the continue status
     cout << "[*] Inside the breakpoint handler." << endl;
-    cout << "Exception Address: " << exception_address << endl;
+    printf("Exception Address: 0x%x",exception_address);
     return DBG_CONTINUE;
 }
 bool Debugger::detach()
@@ -202,7 +208,7 @@ int *Debugger::enumerate_threads()
         CloseHandle(snapshot);
 
         p_thread_list = thread_list;
-        return p_thread_list;
+        return thread_list;
     }
     else
     {
@@ -326,6 +332,72 @@ bool Debugger::bp_set(LPVOID address)
            return false;
        }
     }
+    return true;
+
+
+}
+bool Debugger::SetHardwareBreakpoint(LPVOID address,unsigned char length, unsigned char condition){
+
+    int available=-1;
+    //Check length
+    if (length !=1 && length!=2 &&length!=4){
+        return false;
+    }else{
+        length-=1; //to fit in 2 bits
+    }
+    if(condition!=HW_ACCESS &&condition !=HW_EXECUTE &&condition!=HW_WRITE){
+        return false;
+    }
+    for(int i=0;i<4;i++){
+        if(hardwareBreakpoints[i]==NULL){
+            available=i;
+            break;
+        }
+    }
+    if(available ==-1){
+        return false;
+    }
+    HardwareBreakpoint* hwBreakpoint=new HardwareBreakpoint;
+    hwBreakpoint->address=address;
+    hwBreakpoint->length=length;
+    hwBreakpoint->condition=condition;
+    
+    int *thread_list = enumerate_threads();
+    for (int i = 0; i < sizeof(thread_list) / sizeof(thread_list[0]); i++)
+    {
+        DWORD tid = *(thread_list + i); //thread_list[i];
+
+        HANDLE h_thread = open_thread(tid);
+          // first we need tto get the thread context
+        _CONTEXT context;
+        memset(&context, 0, sizeof(context));
+        context.ContextFlags = 0x00010000b | CONTEXT_DEBUG_REGISTERS;
+
+        if (!GetThreadContext(h_thread, &(context)))
+        {
+            cout << "get_thread_context failed. Err no:" << GetLastError() << endl;
+            delete hwBreakpoint;
+            return false;
+        }
+        context.Dr7 |=1 <<(available*2);
+        switch(available){
+            case 0:
+                context.Dr0=(DWORD32)address;
+                break;
+            case 1:
+                context.Dr1=(DWORD32)address;
+                break;
+            case 2:
+                context.Dr2=(DWORD32)address;
+                break;
+            case 3:
+                context.Dr3=(DWORD32)address;
+                break;
+        }
+        context.Dr7 |=1 <<(length*4+16);
+        context.Dr7 |=1 <<(condition*4+18);
+    }
+    hardwareBreakpoints[available]=hwBreakpoint;
     return true;
 }
 FARPROC Debugger::resolve_function(LPCSTR dll, LPCSTR function)

@@ -14,6 +14,14 @@
 class Debugger
 {
 public:
+Debugger();
+struct HardwareBreakpoint
+{
+    LPVOID address;
+    unsigned char length;
+    unsigned char condition;
+};
+    HardwareBreakpoint* hardwareBreakpoints[4];
     HANDLE open_process(int PID);
     void load(char *path_to_exe);
 
@@ -35,6 +43,7 @@ public:
 
     bool write_process_memory(LPVOID address, LPCVOID data);
     bool bp_set(LPVOID address);
+    bool SetHardwareBreakpoint(LPVOID ,unsigned char , unsigned char );
     FARPROC resolve_function(LPCSTR dll, LPCSTR function);
 
 };
