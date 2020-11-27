@@ -10,15 +10,18 @@ int main(int argc, char *argv[])
     if (argc > 1){
 
         int pid = stoi(argv[1]);
-        dbg.attach(pid); // calss get regs
+        dbg.attach(pid);
         int x;
-        FARPROC printf_address =dbg.resolve_function("msvcrt.dll", "printf");
+        LPVOID printf_address =(LPVOID)  dbg.resolve_function("msvcrt.dll", "printf");
+
         printf("[*] Address of printf: 0x%08x\n" , printf_address);
-        dbg.bp_set((LPVOID)printf_address);
+
+        //dbg.software_breakpoint((LPVOID)printf_address);
+        dbg.SetHardwareBreakpoint(printf_address , 1 , HW_EXECUTE);
         dbg.run();
 
     } else {
-        dbg.load("C:\\Windows\\SysWOW64\\calc.exe"); //// calss get regs
+        dbg.load("C:\\Windows\\SysWOW64\\calc.exe");
         dbg.run();
         dbg.detach();
     }
