@@ -16,13 +16,17 @@ int main(int argc, char *argv[])
 
         printf("[*] Address of printf: 0x%08x\n" , printf_address);
 
+
         //dbg.software_breakpoint((LPVOID)printf_address);
-        if(!dbg.SetHardwareBreakpoint(printf_address , 1 , HW_EXECUTE)){
-            printf("setting hardware breakpoint failed");
-            return 0;
+        // if(!dbg.SetHardwareBreakpoint(printf_address , 1 , HW_EXECUTE)){
+        //     printf("setting hardware breakpoint failed");
+        //     return 0;
+        // }
+        if(!dbg.SetMemoryBreakpoint2(printf_address,4096)){
+                    printf("setting memory breakpoint failed");
+                    return 0;
         }
         dbg.run();
-
     } 
     // else {
     //     dbg.load("C:\\Windows\\SysWOW64\\calc.exe");

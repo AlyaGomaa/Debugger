@@ -7,20 +7,16 @@ using namespace std;
 #include <string>
 
 
-static int pid;
-static HANDLE h_thread;
-static bool debugger_active;
-static HANDLE h_process;
-static _CONTEXT context;
-static DWORD currentException;
-static PVOID exception_address;
-static std::map<int, int> breakpoints;
+
 
 // i686-w64-mingw32-g++ main.cpp Debugger.cpp -m32 -o ../DBG.exe
 Debugger::Debugger(){
     for(int i=0;i<4;i++){
         this->hardwareBreakpoints[i]=NULL;
     }
+    SYSTEM_INFO siSysInfo;
+    GetSystemInfo(&siSysInfo);
+    this->pageSize=siSysInfo.dwPageSize; 
 }
 
 
@@ -28,6 +24,7 @@ HANDLE  Debugger::open_process(int PID)
 {
     return OpenProcess(PROCESS_ALL_ACCESS, false, PID);
 }
+
 void Debugger::load(char *path_to_exe)
 {
     cout << "Now attaching to: " << path_to_exe << endl;
@@ -131,8 +128,9 @@ void Debugger::get_debug_event()
                 continue_status = HandleSoftwareBreakpoint();
             }
             else if (currentException == EXCEPTION_GUARD_PAGE) //  memory breakpoints
-            { 
+            {
                 cout << "Guard Page Access Detected." << endl;
+                continue_status=DBG_CONTINUE;
             }
             else if (currentException == EXCEPTION_SINGLE_STEP) // hardware breakpoint
             {
@@ -328,14 +326,14 @@ FARPROC Debugger::resolve_function(LPCSTR dll, LPCSTR function)
 }
 bool Debugger::SetSoftwareBreakpoint(LPVOID address)
 {
-    std::map<int, int>::iterator it =  breakpoints.find((int) address);
+    std::map<int, int>::iterator it =  this->breakpoints.find((int) address);
     
-    if ( it == breakpoints.end() ){ // breakpoint isn't registered
+    if ( it == this->breakpoints.end() ){ // breakpoint isn't registered
         printf("Breakpoint added @0x%x",address);
        try{
         std::string original_byte = read_process_memory(address, 1); // store the original byte
         write_process_memory(address, "\xcc");                  // write the INT3 opcode
-        breakpoints[(int)address] = (int)original_byte[0];        //register the breakpoint in our internal list
+        this->breakpoints[(int)address] = (int)original_byte[0];        //register the breakpoint in our internal list
        } catch (...){
            cout << "something went wrong while setting the bp, Error code: " << GetLastError()  << endl;
            return false;
@@ -526,5 +524,54 @@ bool Debugger::DeleteHardwareBreakpoint(int slot)
     }
     //remove the breakpoint from the internal list.
     delete hardwareBreakpoints[slot];
+    return true;
+}
+
+bool Debugger::SetMemoryBreakpoint(LPVOID address,DWORD size){
+    DWORD current=(DWORD)address;
+    long currentSize=size;
+
+    while(currentSize >0){
+
+        _MEMORY_BASIC_INFORMATION memoryBasicInfo;
+        if (VirtualQueryEx(h_process,address,&memoryBasicInfo,sizeof(memoryBasicInfo))==0){
+            printf("[ERROR][SetMemoryBreakpoint] VirtualQueryEx failed with error %d\n",GetLastError());
+            return false;
+        }
+        
+        DWORD oldProtection=memoryBasicInfo.Protect;
+        PVOID baseAddress=memoryBasicInfo.BaseAddress;
+
+        if(!VirtualProtectEx(h_process,baseAddress,memoryBasicInfo.RegionSize,oldProtection|PAGE_GUARD,&oldProtection)){
+            printf("[ERROR][SetMemoryBreakpoint] VirtualProtectEx failed with error %d\n",GetLastError());
+            return false;
+        }
+        currentSize-=(DWORD)baseAddress+memoryBasicInfo.RegionSize-current;
+        current=(DWORD)baseAddress;
+        printf("size : %d",currentSize);
+    }
+    
+    return true;
+}
+bool Debugger::SetMemoryBreakpoint2(LPVOID address,DWORD size){
+    DWORD current=(DWORD)address;
+    _MEMORY_BASIC_INFORMATION memoryBasicInfo;
+    if (VirtualQueryEx(h_process,address,&memoryBasicInfo,sizeof(memoryBasicInfo))==0){
+        printf("[ERROR][SetMemoryBreakpoint] VirtualQueryEx failed with error %d\n",GetLastError());
+        return false;
+    } 
+    DWORD oldProtection=memoryBasicInfo.Protect;
+    PVOID baseAddress=memoryBasicInfo.BaseAddress;
+    DWORD noOfPages=0;
+    while((DWORD)address+size>(DWORD)baseAddress+(noOfPages*pageSize)){
+        PVOID currentBaseAddress=(LPVOID)((DWORD)baseAddress+(noOfPages*pageSize));
+        noOfPages++;
+        if(!VirtualProtectEx(h_process,currentBaseAddress,memoryBasicInfo.RegionSize,oldProtection|PAGE_GUARD,&oldProtection)){
+        printf("[ERROR][SetMemoryBreakpoint] VirtualProtectEx failed with error %d\n",GetLastError());
+        return false;
+        }
+    }
+    MemoryBreakpoint memoryBreakPoint={address,size,memoryBasicInfo};
+    memoryBreakpoints.push_back(memoryBreakPoint);
     return true;
 }
