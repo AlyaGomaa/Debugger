@@ -7,10 +7,6 @@ using namespace std;
 #include <string>
 
 
-// # Hardware breakpoint conditions
-// HW_ACCESS                      = 0x00000003
-// HW_EXECUTE                     = 0x00000000
-// HW_WRITE                       = 0x00000001
 static int pid;
 static HANDLE h_thread;
 static bool debugger_active;
@@ -100,6 +96,7 @@ void Debugger::get_debug_event()
     /* If a debugging event occurs while a debugger is waiting for one, the system fills the DEBUG_EVENT structure specified by WaitForDebugEvent with information describing the event.*/
     DEBUG_EVENT debug_event; //gets populated whenever an event occurs
     memset(&debug_event, 0, sizeof(debug_event));
+    DWORD continue_status=DBG_CONTINUE;
 
     bool event = WaitForDebugEvent(&debug_event, INFINITE);
 
@@ -121,7 +118,6 @@ void Debugger::get_debug_event()
             //Obtain the exception code
             currentException = debug_event.u.Exception.ExceptionRecord.ExceptionCode; // access violation , bp , index outta range etc.
             exception_address = debug_event.u.Exception.ExceptionRecord.ExceptionAddress;
-            DWORD continue_status;
             
             if (currentException == EXCEPTION_ACCESS_VIOLATION)
             {
@@ -152,13 +148,13 @@ void Debugger::get_debug_event()
         1 - continue executing (DBG_CONTINUE)
         2 - to continue processing the exception(DBG_EXCEPTION_NOT_HANDLED). */
 
-        ContinueDebugEvent(debug_event.dwProcessId, debug_event.dwThreadId, DBG_CONTINUE);
+        ContinueDebugEvent(debug_event.dwProcessId, debug_event.dwThreadId, continue_status);
     }
 }
 DWORD Debugger::HandleSoftwareBreakpoint()
 { // and return the continue status
     cout << "[*] Inside the breakpoint handler." << endl;
-    printf("Exception Address: 0x%x",exception_address);
+    printf("Exception Address: 0x%x\n",exception_address);
     return DBG_CONTINUE;
 }
 bool Debugger::detach()
@@ -208,12 +204,12 @@ int *Debugger::enumerate_threads()
         CloseHandle(snapshot);
 
         p_thread_list = thread_list;
-        return thread_list;
+        return p_thread_list;
     }
     else
     {
         cout << "enumerate threads failed\n";
-        return 0;
+        return NULL;
     }
 }
 
@@ -247,14 +243,10 @@ void Debugger::get_regs()
 {
 
     int *thread_list = enumerate_threads();
-    //int thread_list[30] =
-
     for (int i = 0; i < sizeof(thread_list) / sizeof(thread_list[0]); i++)
     {
         DWORD tid = *(thread_list + i); //thread_list[i];
-
         HANDLE h_thread = open_thread(tid);
-
         // first we need tto get the thread context
         _CONTEXT context;
         memset(&context, 0, sizeof(context));
@@ -280,7 +272,6 @@ void Debugger::get_regs()
         }
     }
 }
-//C:\Users\alya\Desktop\a.exe
 /*0x1 EXCEPTION_DEBUG_EVENT u.Exception
 0x2 CREATE_THREAD_DEBUG_EVENT u.CreateThread
 0x3 CREATE_PROCESS_DEBUG_EVENT u.CreateProcessInfo
@@ -363,6 +354,7 @@ bool Debugger::SetHardwareBreakpoint(LPVOID address, unsigned char length, unsig
     // Check length
     if (length != 1 && length != 2 && length != 4)
     {
+        printf("[ERROR][SetHardwareBreakpoint] length cant be %d",length);
         return false;
     }
     else
@@ -372,6 +364,7 @@ bool Debugger::SetHardwareBreakpoint(LPVOID address, unsigned char length, unsig
 
     if (condition != HW_ACCESS && condition != HW_EXECUTE && condition != HW_WRITE)
     {
+        printf("[ERROR][SetHardwareBreakpoint] condition not supported\n");
         return false;
     }
     //  Check for available slots
@@ -386,6 +379,7 @@ bool Debugger::SetHardwareBreakpoint(LPVOID address, unsigned char length, unsig
 
     if (available == -1)
     {
+        printf("[ERROR][SetHardwareBreakpoint] no available hardware breakpoints\n");
         return false;
     }
     // Register a new hardware breakpoint
@@ -393,7 +387,7 @@ bool Debugger::SetHardwareBreakpoint(LPVOID address, unsigned char length, unsig
     hwBreakpoint->address = address;
     hwBreakpoint->length = length;
     hwBreakpoint->condition = condition;
-
+    
     int *thread_list = enumerate_threads();
     for (int i = 0; i < sizeof(thread_list) / sizeof(thread_list[0]); i++)
     {
@@ -409,6 +403,7 @@ bool Debugger::SetHardwareBreakpoint(LPVOID address, unsigned char length, unsig
         {
             cout << "Can't get thread context. Err no:" << GetLastError() << endl;
             delete hwBreakpoint;
+            CloseHandle(h_thread);
             return false;
         }
         // Enable the appropriate flag in the DR7 register to set the breakpoint (0-7)
@@ -429,15 +424,25 @@ bool Debugger::SetHardwareBreakpoint(LPVOID address, unsigned char length, unsig
         case 3:
             context.Dr3 = (DWORD32)address;
             break;
+        default:
+            printf("[ERROR][SetHardwareBreakpoint] something went wrong\n");
         }
         // set the condition
-        context.Dr7 |= 1 << (length * 4 + 16);
+        context.Dr7 |= condition << (available * 4 + 16);
 
         // Set the length
-        context.Dr7 |= 1 << (condition * 4 + 18);
-    }
+        context.Dr7 |= length << (available * 4 + 18);
 
+        if (!SetThreadContext(h_thread, &context))
+        {
+            cout << "[ERROR][SetHardwareBreakpoint] can't set thread context. Err no:" << GetLastError() << endl;
+            delete hwBreakpoint;
+            CloseHandle(h_thread);
+            return false;
+        }    
+    }
     hardwareBreakpoints[available] = hwBreakpoint;
+    CloseHandle(h_thread);
     return true;
 }
 
@@ -521,6 +526,5 @@ bool Debugger::DeleteHardwareBreakpoint(int slot)
     }
     //remove the breakpoint from the internal list.
     delete hardwareBreakpoints[slot];
-    cout << hardwareBreakpoints[slot] << endl;
     return true;
 }

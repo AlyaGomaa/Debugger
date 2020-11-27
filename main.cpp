@@ -17,24 +17,17 @@ int main(int argc, char *argv[])
         printf("[*] Address of printf: 0x%08x\n" , printf_address);
 
         //dbg.software_breakpoint((LPVOID)printf_address);
-        dbg.SetHardwareBreakpoint(printf_address , 1 , HW_EXECUTE);
+        if(!dbg.SetHardwareBreakpoint(printf_address , 1 , HW_EXECUTE)){
+            printf("setting hardware breakpoint failed");
+            return 0;
+        }
         dbg.run();
 
-    } else {
-        dbg.load("C:\\Windows\\SysWOW64\\calc.exe");
-        dbg.run();
-        dbg.detach();
-    }
-
-//cout << "Enter the PID of the process to attach to: ";
-
-//cin >> pid;
-
-
-
-    //dbg.load("C:\\Users\\alya\\Desktop\\a.exe");
-  
-        int x;
-        cin >> x;
+    } 
+    // else {
+    //     dbg.load("C:\\Windows\\SysWOW64\\calc.exe");
+    //     dbg.run();
+    //     dbg.detach();
+    // }
         return 0;
 }
